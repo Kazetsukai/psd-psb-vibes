@@ -1,0 +1,426 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PSD to PSB Converter</title>
+  <style>
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      margin: 0;
+      padding: 20px;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      min-height: 100vh;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+    }
+
+    .container {
+      background: white;
+      border-radius: 15px;
+      box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
+      padding: 40px;
+      max-width: 600px;
+      width: 100%;
+      text-align: center;
+    }
+
+    h1 {
+      color: #333;
+      margin-bottom: 10px;
+      font-size: 2.5em;
+      font-weight: 300;
+    }
+
+    .subtitle {
+      color: #666;
+      margin-bottom: 30px;
+      font-size: 1.1em;
+    }
+
+    .drop-zone {
+      border: 3px dashed #ddd;
+      border-radius: 10px;
+      padding: 60px 20px;
+      margin: 30px 0;
+      transition: all 0.3s ease;
+      cursor: pointer;
+      background: #fafafa;
+    }
+
+    .drop-zone:hover,
+    .drop-zone.dragover {
+      border-color: #667eea;
+      background: #f0f4ff;
+      transform: translateY(-2px);
+    }
+
+    .drop-zone.processing {
+      border-color: #ffa500;
+      background: #fff8e1;
+    }
+
+    .drop-zone.loading {
+      border-color: #ccc;
+      background: #f5f5f5;
+      cursor: not-allowed;
+      opacity: 0.6;
+    }
+
+    .drop-zone.loading:hover {
+      border-color: #ccc;
+      background: #f5f5f5;
+      transform: none;
+    }
+
+    .drop-zone.ready {
+      border-color: #28a745;
+      background: #f8fff9;
+    }
+
+    .drop-icon {
+      font-size: 4em;
+      color: #ddd;
+      margin-bottom: 15px;
+    }
+
+    .drop-text {
+      color: #666;
+      font-size: 1.2em;
+      margin-bottom: 10px;
+    }
+
+    .drop-subtext {
+      color: #999;
+      font-size: 0.9em;
+    }
+
+    .file-input {
+      display: none;
+    }
+
+    .status {
+      margin-top: 20px;
+      padding: 15px;
+      border-radius: 8px;
+      font-weight: 500;
+      display: none;
+    }
+
+    .status.success {
+      background: #d4edda;
+      color: #155724;
+      border: 1px solid #c3e6cb;
+    }
+
+    .status.error {
+      background: #f8d7da;
+      color: #721c24;
+      border: 1px solid #f5c6cb;
+    }
+
+    .status.processing {
+      background: #fff3cd;
+      color: #856404;
+      border: 1px solid #ffeaa7;
+    }
+
+    .progress-bar {
+      width: 100%;
+      height: 6px;
+      background: #f0f0f0;
+      border-radius: 3px;
+      margin: 15px 0;
+      overflow: hidden;
+      display: none;
+    }
+
+    .progress-fill {
+      height: 100%;
+      background: #667eea;
+      width: 0%;
+      transition: width 0.3s ease;
+    }
+
+    .download-btn {
+      display: none;
+      background: #667eea;
+      color: white;
+      border: none;
+      padding: 15px 30px;
+      border-radius: 8px;
+      font-size: 1.1em;
+      cursor: pointer;
+      margin-top: 20px;
+      transition: background 0.3s ease;
+    }
+
+    .download-btn:hover {
+      background: #5a6fd8;
+    }
+
+    .loading-spinner {
+      border: 3px solid #f3f3f3;
+      border-top: 3px solid #667eea;
+      border-radius: 50%;
+      width: 30px;
+      height: 30px;
+      animation: spin 1s linear infinite;
+      display: inline-block;
+      margin-right: 10px;
+    }
+
+    @keyframes spin {
+      0% {
+        transform: rotate(0deg);
+      }
+
+      100% {
+        transform: rotate(360deg);
+      }
+    }
+
+    .hidden {
+      display: none !important;
+    }
+  </style>
+</head>
+
+<body>
+  <div class="container">
+    <h1>🎨 PSD → PSB Converter</h1>
+    <p class="subtitle">Convert your Photoshop PSD files to PSB format using ImageMagick</p>
+
+    <div class="drop-zone loading" id="dropZone">
+      <div class="drop-icon">⏳</div>
+      <div class="drop-text" id="dropText">Loading ImageMagick WASM...</div>
+      <div class="drop-subtext" id="dropSubtext">Please wait</div>
+    </div>
+
+    <input type="file" id="fileInput" class="file-input" accept=".psd">
+
+    <div class="progress-bar" id="progressBar">
+      <div class="progress-fill" id="progressFill"></div>
+    </div>
+
+    <div class="status" id="status"></div>
+
+    <button class="download-btn" id="downloadBtn">📥 Download PSB File</button>
+  </div>
+
+  <script type="module">
+    import {
+      initializeImageMagick,
+      ImageMagick,
+      MagickFormat,
+    } from 'https://cdn.jsdelivr.net/npm/@imagemagick/magick-wasm@0.0.37/+esm';
+
+    let convertedBlob = null;
+    let originalFileName = '';
+    let isWasmReady = false;
+
+    // Initialize ImageMagick
+    async function initializeMagick() {
+      try {
+        console.log('Initializing ImageMagick WASM...');
+
+        // Fetch the WASM binary from the correct path
+        const wasmResponse = await fetch('https://cdn.jsdelivr.net/npm/@imagemagick/magick-wasm@0.0.37/dist/magick.wasm');
+        const wasmBytes = await wasmResponse.arrayBuffer();
+
+        await initializeImageMagick(wasmBytes);
+        console.log('ImageMagick WASM initialized successfully');
+
+        // Update UI to show ready state
+        isWasmReady = true;
+        enableDropZone();
+      } catch (error) {
+        console.error('Failed to initialize ImageMagick WASM:', error);
+        showStatus('Failed to initialize ImageMagick. Please refresh the page.', 'error');
+        showErrorState();
+      }
+    }
+
+    // Enable drop zone after WASM loads
+    function enableDropZone() {
+      const dropZone = document.getElementById('dropZone');
+      const dropIcon = dropZone.querySelector('.drop-icon');
+      const dropText = document.getElementById('dropText');
+      const dropSubtext = document.getElementById('dropSubtext');
+
+      dropZone.classList.remove('loading');
+      dropZone.classList.add('ready');
+      dropIcon.textContent = '📄';
+      dropText.textContent = 'Drag & drop your PSD file here';
+      dropSubtext.textContent = 'or click to browse';
+    }
+
+    // Show error state if WASM fails to load
+    function showErrorState() {
+      const dropZone = document.getElementById('dropZone');
+      const dropIcon = dropZone.querySelector('.drop-icon');
+      const dropText = document.getElementById('dropText');
+      const dropSubtext = document.getElementById('dropSubtext');
+
+      dropZone.classList.remove('loading');
+      dropIcon.textContent = '❌';
+      dropText.textContent = 'Failed to load ImageMagick';
+      dropSubtext.textContent = 'Please refresh the page';
+    }
+
+    // DOM elements
+    const dropZone = document.getElementById('dropZone');
+    const fileInput = document.getElementById('fileInput');
+    const status = document.getElementById('status');
+    const downloadBtn = document.getElementById('downloadBtn');
+    const progressBar = document.getElementById('progressBar');
+    const progressFill = document.getElementById('progressFill');
+
+    // Event listeners
+    dropZone.addEventListener('click', handleDropZoneClick);
+    dropZone.addEventListener('dragover', handleDragOver);
+    dropZone.addEventListener('dragleave', handleDragLeave);
+    dropZone.addEventListener('drop', handleDrop);
+    fileInput.addEventListener('change', handleFileSelect);
+    downloadBtn.addEventListener('click', downloadFile);
+
+    function handleDropZoneClick() {
+      if (!isWasmReady) {
+        showStatus('Please wait for ImageMagick to finish loading.', 'error');
+        return;
+      }
+      fileInput.click();
+    }
+
+    function handleDragOver(e) {
+      e.preventDefault();
+      if (isWasmReady) {
+        dropZone.classList.add('dragover');
+      }
+    }
+
+    function handleDragLeave(e) {
+      e.preventDefault();
+      dropZone.classList.remove('dragover');
+    }
+
+    function handleDrop(e) {
+      e.preventDefault();
+      dropZone.classList.remove('dragover');
+
+      if (!isWasmReady) {
+        showStatus('Please wait for ImageMagick to finish loading.', 'error');
+        return;
+      }
+
+      const files = e.dataTransfer.files;
+      if (files.length > 0) {
+        processFile(files[0]);
+      }
+    }
+
+    function handleFileSelect(e) {
+      if (!isWasmReady) {
+        showStatus('Please wait for ImageMagick to finish loading.', 'error');
+        return;
+      }
+
+      const files = e.target.files;
+      if (files.length > 0) {
+        processFile(files[0]);
+      }
+    }
+
+    async function processFile(file) {
+      if (!file.name.toLowerCase().endsWith('.psd')) {
+        showStatus('Please select a valid PSD file.', 'error');
+        return;
+      }
+
+      originalFileName = file.name.replace(/\.psd$/i, '');
+
+      try {
+        showStatus('Converting PSD to PSB...', 'processing');
+        dropZone.classList.add('processing');
+        progressBar.style.display = 'block';
+        downloadBtn.style.display = 'none';
+
+        // Simulate progress
+        updateProgress(20);
+
+        // Read file as ArrayBuffer
+        const arrayBuffer = await file.arrayBuffer();
+        const inputData = new Uint8Array(arrayBuffer);
+
+        updateProgress(40);
+
+        // Convert using ImageMagick
+        ImageMagick.read(inputData, (image) => {
+          updateProgress(60);
+
+          updateProgress(80);
+
+          // Write the converted image in PSB format
+          image.write(MagickFormat.Psb, (data) => {
+            convertedBlob = new Blob([data], { type: 'application/octet-stream' });
+            updateProgress(100);
+
+            setTimeout(() => {
+              showStatus(`Successfully converted "${file.name}" to PSB format!`, 'success');
+              downloadBtn.style.display = 'inline-block';
+              dropZone.classList.remove('processing');
+              progressBar.style.display = 'none';
+            }, 500);
+          });
+        });
+
+      } catch (error) {
+        console.error('Conversion error:', error);
+        showStatus(`Conversion failed: ${error.message}`, 'error');
+        dropZone.classList.remove('processing');
+        progressBar.style.display = 'none';
+      }
+    } function updateProgress(percent) {
+      progressFill.style.width = percent + '%';
+    }
+
+    function showStatus(message, type) {
+      status.textContent = message;
+      status.className = `status ${type}`;
+      status.style.display = 'block';
+
+      if (type === 'processing') {
+        status.innerHTML = `<div class="loading-spinner"></div>${message}`;
+      }
+    }
+
+    function downloadFile() {
+      if (!convertedBlob) {
+        showStatus('No file available for download.', 'error');
+        return;
+      }
+
+      const url = URL.createObjectURL(convertedBlob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${originalFileName}.psb`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+
+      showStatus('Download started!', 'success');
+    }
+
+    // Initialize when page loads
+    window.addEventListener('load', initializeMagick);
+  </script>
+</body>
+
+</html>
