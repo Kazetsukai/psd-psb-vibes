@@ -346,7 +346,7 @@
       originalFileName = file.name.replace(/\.psd$/i, '');
 
       try {
-        showStatus('Converting PSD to PSB...', 'processing');
+        showStatus('Converting PSD to PSB (preserving layers)...', 'processing');
         dropZone.classList.add('processing');
         progressBar.style.display = 'block';
         downloadBtn.style.display = 'none';
@@ -360,19 +360,16 @@
 
         updateProgress(40);
 
-        // Convert using ImageMagick
-        ImageMagick.read(inputData, (image) => {
+        // Use readCollection to preserve all layers
+        ImageMagick.readCollection(inputData, (images) => {
           updateProgress(60);
-
           updateProgress(80);
-
-          // Write the converted image in PSB format
-          image.write(MagickFormat.Psb, (data) => {
+          // Use the ImageCollection's write method to export all layers
+          images.write(MagickFormat.Psb, (data) => {
             convertedBlob = new Blob([data], { type: 'application/octet-stream' });
             updateProgress(100);
-
             setTimeout(() => {
-              showStatus(`Successfully converted "${file.name}" to PSB format!`, 'success');
+              showStatus(`Successfully converted "${file.name}" to PSB format (layers preserved)!`, 'success');
               downloadBtn.style.display = 'inline-block';
               dropZone.classList.remove('processing');
               progressBar.style.display = 'none';
